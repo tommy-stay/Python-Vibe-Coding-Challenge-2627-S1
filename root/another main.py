@@ -2,15 +2,15 @@ import random
 import sys
 import pygame
 
-# Initialize Pygame
+
 pygame.init()
 pygame.font.init()
 
-# Game Window Dimensions & Grid Config
+
 WIDTH, HEIGHT = 900, 650
 GRID_SIZE = 45
 COLS = WIDTH // GRID_SIZE
-ROWS = 11  # Grid rows for playfield, bottom is reserved for HUD
+ROWS = 11
 
 FPS = 60
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
@@ -19,17 +19,17 @@ pygame.display.set_caption(
 )
 clock = pygame.time.Clock()
 
-# Fonts
+
 FONT = pygame.font.SysFont("arial", 18)
 BIG_FONT = pygame.font.SysFont("arial", 26, bold=True)
 
-# Color Palette (Sci-Fi Theme)
+
 BLACK = (10, 10, 20)
 WHITE = (255, 255, 255)
 DARK_GRAY = (35, 35, 55)
 LIGHT_GRAY = (180, 180, 200)
 SPACE_BLUE = (15, 20, 40)
-BLUE = (50, 150, 255)  # Added missing BLUE color definition
+BLUE = (50, 150, 255)
 CYAN = (0, 220, 220)
 GREEN = (40, 220, 100)
 PURPLE = (170, 60, 240)
@@ -53,12 +53,12 @@ class Player:
     self.credits = 120
     self.level = 1
 
-    # Crew & Codes
+
     self.crew = []
     self.vault_codes = []
     self.inventory = {"Nano-Medpac": 3, "Energy Cell": 2}
 
-    # Weapons & Abilities
+
     self.weapons = {
         "Pulse Blaster": {
             "base_atk": 20,
@@ -71,7 +71,7 @@ class Player:
     new_x = self.x + dx
     new_y = self.y + dy
 
-    # Check bounds and walls ('W')
+
     if 0 <= new_x < COLS and 0 <= new_y < len(world_map):
       if world_map[new_y][new_x] != "W":
         self.x = new_x
@@ -84,7 +84,7 @@ class Player:
     pygame.draw.rect(surface, CYAN, rect, border_radius=8)
     pygame.draw.rect(surface, WHITE, rect, 2, border_radius=8)
 
-    # Draw Starfleet Commander visor/eyes
+  
     pygame.draw.circle(
         surface,
         BLACK,
