@@ -22,6 +22,7 @@ clock = pygame.time.Clock()
 # Fonts
 FONT = pygame.font.SysFont("arial", 18)
 BIG_FONT = pygame.font.SysFont("arial", 26, bold=True)
+VICTORY_FONT = pygame.font.SysFont("arial", 36, bold=True)
 
 # Color Palette (Sci-Fi Theme)
 BLACK = (10, 10, 20)
@@ -53,10 +54,11 @@ class Player:
     self.credits = 120
     self.level = 1
 
-    # Crew & Codes
+    # Crew, Codes & Game State flags
     self.crew = []
     self.vault_codes = []
     self.inventory = {"Nano-Medpac": 3, "Energy Cell": 2}
+    self.game_won = False
 
     # Weapons & Abilities
     self.weapons = {
@@ -68,6 +70,8 @@ class Player:
     self.equipped_weapon = "Pulse Blaster"
 
   def move(self, dx, dy, world_map):
+    if self.game_won:
+      return  # Stop movement if game is won
     new_x = self.x + dx
     new_y = self.y + dy
 
@@ -100,14 +104,14 @@ class Player:
 
 
 # ============================================================================
-#                               GALAXY MAP LAYOUT (FIXED OPENINGS)
+#                               GALAXY MAP LAYOUT
 # ============================================================================
 GALAXY_MAP = [
     "WWWWWWWWWWWWWWWWWWWW",
     "W...1........W.....W",
     "W...WWWWWW...W..2..W",
     "W........W...W.....W",
-    "W..S.....W...W..WWWW",  # Opening created here into the right side
+    "W..S.....W...W..WWWW",
     "W........W.........W",
     "WWWWWW...WWWWWW....W",
     "W.............W....W",
@@ -146,7 +150,7 @@ def trigger_combat(screen, player, enemy_name, enemy_hp):
         CYAN,
     )
     e_info = FONT.render(
-        f"{enemy_name} HP: {enemy_hp}/{enemy_max_hp}", True, RED
+        f"{enemy_name} HP: {max(0, enemy_hp)}/{enemy_max_hp}", True, RED
     )
     screen.blit(p_info, (100, 130))
     screen.blit(e_info, (520, 130))
@@ -205,19 +209,105 @@ def trigger_combat(screen, player, enemy_name, enemy_hp):
           player.energy = min(player.max_energy, player.energy + 25)
           msg = "Rerouted power. Restored 25 Energy."
 
-        if enemy_hp > 0:
-          e_dmg = random.randint(12, 22)
-          player.hp -= e_dmg
-          if player.hp <= 0:
-            msg = "💀 Hull breached! You were defeated..."
-            pygame.time.delay(1800)
-            return False
-        else:
+        # CHECK IF ENEMY / BOSS IS DEFEATED
+        if enemy_hp <= 0:
           msg = f"🏆 Victory! {enemy_name} neutralized."
+          screen.fill(SPACE_BLUE)
+          screen.blit(title, (WIDTH // 2 - title.get_width() // 2, 40))
+          screen.blit(p_info, (100, 130))
+          e_info_zero = FONT.render(
+              f"{enemy_name} HP: 0/{enemy_max_hp}", True, RED
+          )
+          screen.blit(e_info_zero, (520, 130))
+          pygame.draw.rect(screen, DARK_GRAY, msg_box, border_radius=6)
+          pygame.draw.rect(screen, CYAN, msg_box, 2, border_radius=6)
+          screen.blit(
+              FONT.render(msg, True, GREEN), (msg_box.x + 20, msg_box.y + 20)
+          )
+          pygame.display.flip()
+
           pygame.time.delay(1500)
-          player.credits += 60
+          player.credits += 75
           player.level += 1
           return True
+
+        # Enemy Counter-Attack Turn
+        e_dmg = random.randint(12, 22)
+        player.hp -= e_dmg
+        if player.hp <= 0:
+          msg = "💀 Hull breached! You were defeated..."
+          pygame.display.flip()
+          pygame.time.delay(1800)
+          return False
+
+
+# ============================================================================
+#                               VICTORY SPECIAL ROOM SCREEN
+# ============================================================================
+def show_victory_screen(screen, player):
+  waiting = True
+  while waiting:
+    screen.fill(BLACK)
+
+    # Draw decorative starlight background
+    for i in range(50):
+      sx = (i * 137) % WIDTH
+      sy = (i * 91) % HEIGHT
+      pygame.draw.circle(screen, WHITE, (sx, sy), 2)
+
+    # Victory Box Frame
+    box = pygame.Rect(100, 80, WIDTH - 200, HEIGHT - 160)
+    pygame.draw.rect(screen, SPACE_BLUE, box, border_radius=12)
+    pygame.draw.rect(screen, GOLD, box, 4, border_radius=12)
+
+    title = VICTORY_FONT.render(
+        "🌟 MISSION ACCOMPLISHED 🌟", True, GOLD
+    )
+    sub = BIG_FONT.render("THE OMEGA DREADNOUGHT IS DESTROYED", True, CYAN)
+
+    p_stats = FONT.render(
+        f"Commander: {player.name if hasattr(player, 'name') else 'Hero'}  | "
+        f" Level Reached: {player.level}",
+        True,
+        WHITE,
+    )
+    credits_stats = FONT.render(
+        f"Final Credits: {player.credits} ¢  |  Crew Members:"
+        f" {player.crew if player.crew else 'Solo Explorer'}",
+        True,
+        WHITE,
+    )
+    exit_prompt = FONT.render(
+        "Press [ESC] or close window to exit game.", True, GREEN
+    )
+
+    screen.blit(
+        title, (WIDTH // 2 - title.get_width() // 2, box.y + 50)
+    )
+    screen.blit(
+        sub, (WIDTH // 2 - sub.get_width() // 2, box.y + 110)
+    )
+    screen.blit(
+        p_stats, (WIDTH // 2 - p_stats.get_width() // 2, box.y + 190)
+    )
+    screen.blit(
+        credits_stats,
+        (WIDTH // 2 - credits_stats.get_width() // 2, box.y + 230),
+    )
+    screen.blit(
+        exit_prompt, (WIDTH // 2 - exit_prompt.get_width() // 2, box.y + 310)
+    )
+
+    pygame.display.flip()
+
+    for event in pygame.event.get():
+      if event.type == pygame.QUIT:
+        pygame.quit()
+        sys.exit()
+      elif event.type == pygame.KEYDOWN:
+        if event.key == pygame.K_ESCAPE or event.key == pygame.K_RETURN:
+          pygame.quit()
+          sys.exit()
 
 
 # ============================================================================
@@ -327,6 +417,11 @@ def main():
         elif event.key == pygame.K_d:
           player.move(1, 0, GALAXY_MAP)
 
+    # If the game is already won, trigger the special victory room screen
+    if player.game_won:
+      show_victory_screen(screen, player)
+      break
+
     current_tile = GALAXY_MAP[player.y][player.x]
 
     if current_tile == "S":
@@ -369,9 +464,7 @@ def main():
       if len(player.vault_codes) >= 3:
         won = trigger_combat(screen, player, "DREADNOUGHT OMEGA AI", 280)
         if won:
-          status_msg = (
-              "🎉 VICTORY! You defeated the Omega AI and saved the galaxy!"
-          )
+          player.game_won = True  # Set victory flag so it switches to the win room
         else:
           break
       else:
