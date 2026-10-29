@@ -2,15 +2,15 @@ import random
 import sys
 import pygame
 
-
+# Initialize Pygame
 pygame.init()
 pygame.font.init()
 
-
+# Game Window Dimensions & Grid Config
 WIDTH, HEIGHT = 900, 650
 GRID_SIZE = 45
 COLS = WIDTH // GRID_SIZE
-ROWS = 11
+ROWS = 11  # Grid rows for playfield, bottom is reserved for HUD
 
 FPS = 60
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
@@ -19,11 +19,11 @@ pygame.display.set_caption(
 )
 clock = pygame.time.Clock()
 
-
+# Fonts
 FONT = pygame.font.SysFont("arial", 18)
 BIG_FONT = pygame.font.SysFont("arial", 26, bold=True)
 
-
+# Color Palette (Sci-Fi Theme)
 BLACK = (10, 10, 20)
 WHITE = (255, 255, 255)
 DARK_GRAY = (35, 35, 55)
@@ -53,12 +53,12 @@ class Player:
     self.credits = 120
     self.level = 1
 
-
+    # Crew & Codes
     self.crew = []
     self.vault_codes = []
     self.inventory = {"Nano-Medpac": 3, "Energy Cell": 2}
 
-
+    # Weapons & Abilities
     self.weapons = {
         "Pulse Blaster": {
             "base_atk": 20,
@@ -71,7 +71,7 @@ class Player:
     new_x = self.x + dx
     new_y = self.y + dy
 
-
+    # Check bounds and walls ('W')
     if 0 <= new_x < COLS and 0 <= new_y < len(world_map):
       if world_map[new_y][new_x] != "W":
         self.x = new_x
@@ -84,7 +84,7 @@ class Player:
     pygame.draw.rect(surface, CYAN, rect, border_radius=8)
     pygame.draw.rect(surface, WHITE, rect, 2, border_radius=8)
 
-  
+    # Draw Starfleet Commander visor/eyes
     pygame.draw.circle(
         surface,
         BLACK,
@@ -100,14 +100,14 @@ class Player:
 
 
 # ============================================================================
-#                               GALAXY MAP LAYOUT
+#                               GALAXY MAP LAYOUT (FIXED OPENINGS)
 # ============================================================================
 GALAXY_MAP = [
     "WWWWWWWWWWWWWWWWWWWW",
     "W...1........W.....W",
     "W...WWWWWW...W..2..W",
     "W........W...W.....W",
-    "W..S.....W...WWWWWWW",
+    "W..S.....W...W..WWWW",  # Opening created here into the right side
     "W........W.........W",
     "WWWWWW...WWWWWW....W",
     "W.............W....W",
@@ -136,7 +136,6 @@ def trigger_combat(screen, player, enemy_name, enemy_hp):
   while combat_active:
     screen.fill(SPACE_BLUE)
 
-    # Title & Stats Header
     title = BIG_FONT.render(f"⚔️ BATTLE: {enemy_name.upper()}", True, RED)
     screen.blit(title, (WIDTH // 2 - title.get_width() // 2, 40))
 
@@ -152,7 +151,6 @@ def trigger_combat(screen, player, enemy_name, enemy_hp):
     screen.blit(p_info, (100, 130))
     screen.blit(e_info, (520, 130))
 
-    # Combat Commands
     c1 = FONT.render("[1] Fire Weapon Attack", True, WHITE)
     c2 = FONT.render(
         "[2] Cast Shield Generator (-15 Energy, +40 HP)", True, GREEN
@@ -169,7 +167,6 @@ def trigger_combat(screen, player, enemy_name, enemy_hp):
     screen.blit(c3, (100, 320))
     screen.blit(c4, (100, 370))
 
-    # Feedback Message Box
     msg_box = pygame.Rect(80, 440, WIDTH - 160, 60)
     pygame.draw.rect(screen, DARK_GRAY, msg_box, border_radius=6)
     pygame.draw.rect(screen, CYAN, msg_box, 2, border_radius=6)
@@ -208,7 +205,6 @@ def trigger_combat(screen, player, enemy_name, enemy_hp):
           player.energy = min(player.max_energy, player.energy + 25)
           msg = "Rerouted power. Restored 25 Energy."
 
-        # Enemy Counter-Attack Turn
         if enemy_hp > 0:
           e_dmg = random.randint(12, 22)
           player.hp -= e_dmg
@@ -318,7 +314,6 @@ def main():
   while running:
     clock.tick(FPS)
 
-    # 1. HANDLE KEYBOARD INPUT
     for event in pygame.event.get():
       if event.type == pygame.QUIT:
         running = False
@@ -332,7 +327,6 @@ def main():
         elif event.key == pygame.K_d:
           player.move(1, 0, GALAXY_MAP)
 
-    # 2. CHECK TILE INTERACTIONS
     current_tile = GALAXY_MAP[player.y][player.x]
 
     if current_tile == "S":
@@ -386,10 +380,8 @@ def main():
             " Explore Sectors 1, 2, and 3 first!"
         )
 
-    # 3. RENDER GRAPHICS
     screen.fill(SPACE_BLUE)
 
-    # Draw Starfield Grid Map
     for row in range(len(GALAXY_MAP)):
       for col in range(COLS):
         tile = GALAXY_MAP[row][col]
@@ -399,7 +391,7 @@ def main():
 
         if tile == "W":
           pygame.draw.rect(screen, DARK_GRAY, rect)
-          pygame.draw.rect(screen, (60, 60, 90), rect, 1)  # Asteroid wall
+          pygame.draw.rect(screen, (60, 60, 90), rect, 1)
         elif tile == "S":
           pygame.draw.rect(screen, BLUE, rect, border_radius=6)
         elif tile == "1":
@@ -414,10 +406,8 @@ def main():
           pygame.draw.rect(screen, (15, 20, 35), rect)
           pygame.draw.rect(screen, (25, 30, 50), rect, 1)
 
-    # Draw Player Starship Marker
     player.draw(screen)
 
-    # Draw HUD Panel at Bottom
     hud_rect = pygame.Rect(0, HEIGHT - 150, WIDTH, 150)
     pygame.draw.rect(screen, (12, 16, 30), hud_rect)
     pygame.draw.rect(screen, CYAN, hud_rect, 2)
