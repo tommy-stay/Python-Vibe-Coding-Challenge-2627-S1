@@ -6,36 +6,60 @@ import pygame
 pygame.init()
 pygame.font.init()
 
-# Game Window Dimensions & Grid Config
-WIDTH, HEIGHT = 900, 650
-GRID_SIZE = 45
+# Game Window Dimensions & Larger Grid Config
+WIDTH, HEIGHT = 1100, 750
+GRID_SIZE = 40
 COLS = WIDTH // GRID_SIZE
-ROWS = 11  # Grid rows for playfield, bottom is reserved for HUD
+ROWS = 12
 
 FPS = 60
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption(
-    "Starbound Odyssey: Intergalactic WASD Exploration"
-)
+pygame.display.set_caption("Starbound Odyssey: Expanded Galaxy & Fixed Boss Pathway")
 clock = pygame.time.Clock()
 
 # Fonts
 FONT = pygame.font.SysFont("arial", 18)
 BIG_FONT = pygame.font.SysFont("arial", 26, bold=True)
-VICTORY_FONT = pygame.font.SysFont("arial", 36, bold=True)
+TITLE_FONT = pygame.font.SysFont("arial", 32, bold=True)
+VICTORY_FONT = pygame.font.SysFont("arial", 40, bold=True)
 
-# Color Palette (Sci-Fi Theme)
-BLACK = (10, 10, 20)
-WHITE = (255, 255, 255)
-DARK_GRAY = (35, 35, 55)
-LIGHT_GRAY = (180, 180, 200)
-SPACE_BLUE = (15, 20, 40)
-BLUE = (50, 150, 255)
-CYAN = (0, 220, 220)
-GREEN = (40, 220, 100)
-PURPLE = (170, 60, 240)
+# Color Palette (Deep Space Cyberpunk Theme)
+BLACK = (8, 10, 18)
+WHITE = (240, 245, 255)
+DARK_GRAY = (25, 30, 48)
+PANEL_BG = (15, 20, 35)
+SPACE_BLUE = (10, 14, 28)
+CYAN = (0, 240, 255)
+BLUE = (40, 140, 255)
+GREEN = (50, 230, 120)
+PURPLE = (180, 70, 255)
 GOLD = (255, 215, 0)
-RED = (230, 50, 50)
+RED = (255, 60, 80)
+VOID_PURPLE = (100, 20, 150)
+ORANGE = (255, 140, 0)
+
+COLOR_OPTIONS = {
+    "Cyan": CYAN,
+    "Green": GREEN,
+    "Gold": GOLD,
+    "Purple": PURPLE,
+    "Red": RED,
+    "Orange": ORANGE,
+}
+COLOR_NAMES = list(COLOR_OPTIONS.keys())
+
+SHIP_CLASSES = {
+    "Scout": {"hp": 130, "energy": 120, "credits": 200, "desc": "Fast & High Energy"},
+    "Destroyer": {"hp": 180, "energy": 80, "credits": 140, "desc": "Tanky Hull & Armor"},
+    "Cruiser": {"hp": 150, "energy": 100, "credits": 250, "desc": "Balanced & Wealthy"},
+}
+SHIP_NAMES = list(SHIP_CLASSES.keys())
+
+STARS = [
+    (random.randint(0, WIDTH), random.randint(0, HEIGHT), random.choice([1, 2, 3]))
+    for _ in range(110)
+]
+
 
 # ============================================================================
 #                               PLAYER CLASS
@@ -44,492 +68,721 @@ RED = (230, 50, 50)
 
 class Player:
 
-  def __init__(self, x, y):
-    self.x = x
-    self.y = y
-    self.hp = 150
-    self.max_hp = 150
-    self.energy = 80
-    self.max_energy = 80
-    self.credits = 120
-    self.level = 1
+    def __init__(self, name, color_name, ship_class):
+        self.name = name
+        self.color_name = color_name
+        self.color = COLOR_OPTIONS.get(color_name, CYAN)
+        self.ship_class = ship_class
 
-    # Crew, Codes & Game State flags
-    self.crew = []
-    self.vault_codes = []
-    self.inventory = {"Nano-Medpac": 3, "Energy Cell": 2}
-    self.game_won = False
+        stats = SHIP_CLASSES[ship_class]
+        self.hp = stats["hp"]
+        self.max_hp = stats["hp"]
+        self.energy = stats["energy"]
+        self.max_energy = stats["energy"]
+        self.credits = stats["credits"]
+        self.level = 1
 
-    # Weapons & Abilities
-    self.weapons = {
-        "Pulse Blaster": {
-            "base_atk": 20,
-            "desc": "Standard starfleet sidearm.",
+        self.x = 2
+        self.y = 5
+        self.crew = []
+        self.vault_codes = []
+        self.inventory = {"Nano-Medpac": 3, "Energy Cell": 2}
+        self.in_post_game = False
+        self.ultimate_boss_defeated = False
+
+        self.position_history = [(self.x, self.y)]
+
+        self.weapons = {
+            "Pulse Blaster": {
+                "base_atk": 22,
+                "desc": "Standard starfleet sidearm.",
+            }
         }
-    }
-    self.equipped_weapon = "Pulse Blaster"
+        self.equipped_weapon = "Pulse Blaster"
 
-  def move(self, dx, dy, world_map):
-    if self.game_won:
-      return  # Stop movement if game is won
-    new_x = self.x + dx
-    new_y = self.y + dy
+    def move(self, dx, dy, world_map):
+        new_x = self.x + dx
+        new_y = self.y + dy
+        if 0 <= new_x < COLS and 0 <= new_y < len(world_map):
+            if world_map[new_y][new_x] != "W":
+                self.x = new_x
+                self.y = new_y
 
-    # Check bounds and walls ('W')
-    if 0 <= new_x < COLS and 0 <= new_y < len(world_map):
-      if world_map[new_y][new_x] != "W":
-        self.x = new_x
-        self.y = new_y
+                self.position_history.append((self.x, self.y))
+                if len(self.position_history) > 10:
+                    self.position_history.pop(0)
 
-  def draw(self, surface):
-    rect = pygame.Rect(
-        self.x * GRID_SIZE, self.y * GRID_SIZE, GRID_SIZE, GRID_SIZE
-    )
-    pygame.draw.rect(surface, CYAN, rect, border_radius=8)
-    pygame.draw.rect(surface, WHITE, rect, 2, border_radius=8)
+    def draw(self, surface, current_crew):
+        rect = pygame.Rect(
+            self.x * GRID_SIZE, self.y * GRID_SIZE, GRID_SIZE, GRID_SIZE
+        )
+        pygame.draw.rect(surface, WHITE, rect.inflate(4, 4), 2, border_radius=10)
+        pygame.draw.rect(surface, self.color, rect, border_radius=8)
+        pygame.draw.circle(
+            surface,
+            BLACK,
+            (self.x * GRID_SIZE + 12, self.y * GRID_SIZE + 16),
+            4,
+        )
+        pygame.draw.circle(
+            surface,
+            BLACK,
+            (self.x * GRID_SIZE + 28, self.y * GRID_SIZE + 16),
+            4,
+        )
 
-    # Draw Starfleet Commander visor/eyes
-    pygame.draw.circle(
-        surface,
-        BLACK,
-        (self.x * GRID_SIZE + 14, self.y * GRID_SIZE + 16),
-        4,
-    )
-    pygame.draw.circle(
-        surface,
-        BLACK,
-        (self.x * GRID_SIZE + 31, self.y * GRID_SIZE + 16),
-        4,
-    )
+        history_len = len(self.position_history)
+        if "Dr. Vex" in current_crew and history_len >= 2:
+            vex_pos = self.position_history[-2]
+            vex_rect = pygame.Rect(
+                vex_pos[0] * GRID_SIZE, vex_pos[1] * GRID_SIZE, GRID_SIZE, GRID_SIZE
+            )
+            pygame.draw.rect(surface, GREEN, vex_rect, border_radius=8)
+            pygame.draw.circle(
+                surface,
+                BLACK,
+                (vex_pos[0] * GRID_SIZE + 20, vex_pos[1] * GRID_SIZE + 20),
+                4,
+            )
+
+        if "Sprocket" in current_crew and history_len >= 3:
+            sproc_pos = self.position_history[-3]
+            sproc_rect = pygame.Rect(
+                sproc_pos[0] * GRID_SIZE,
+                sproc_pos[1] * GRID_SIZE,
+                GRID_SIZE,
+                GRID_SIZE,
+            )
+            pygame.draw.rect(surface, GOLD, sproc_rect, border_radius=8)
+            pygame.draw.circle(
+                surface,
+                BLACK,
+                (sproc_pos[0] * GRID_SIZE + 20, sproc_pos[1] * GRID_SIZE + 20),
+                4,
+            )
 
 
 # ============================================================================
-#                               GALAXY MAP LAYOUT
+#                       EXPANDED GALAXY MAPS (GUARANTEED OPEN BOSS PATHS)
 # ============================================================================
-GALAXY_MAP = [
-    "WWWWWWWWWWWWWWWWWWWW",
-    "W...1........W.....W",
-    "W...WWWWWW...W..2..W",
-    "W........W...W.....W",
-    "W..S.....W...W..WWWW",
-    "W........W.........W",
-    "WWWWWW...WWWWWW....W",
-    "W.............W....W",
-    "W..3..........W..B.W",
-    "W.............W....W",
-    "WWWWWWWWWWWWWWWWWWWW",
+MAIN_MAP = [
+    "WWWWWWWWWWWWWWWWWWWWWWWWWWW",
+    "W...1........W.........W..W",
+    "W...WWWWWW...W..2......W..W",
+    "W........W.............W..W",
+    "W..S.....W......4......W..W",  # Starbase 7 & Cache 4
+    "W.........................B",  # Completely open highway straight to Boss (B)
+    "W.........................W",
+    "W........W.............W..W",
+    "W..3.....W.............W..W",
+    "W........W......5......W..W",  # Sector 3 & Cache 5
+    "W.........................W",
+    "WWWWWWWWWWWWWWWWWWWWWWWWWWW",
 ]
 
-LOCATION_NAMES = {
-    "S": "Starbase 7 (Market & Crew)",
-    "1": "Planet Zorblax (Crystal Mines)",
-    "2": "Cyber-Derelict Ship (Armory)",
-    "3": "Quantum Sanctum (Elder Shrine)",
-    "B": "Omega Dreadnought Vault",
-}
+POST_GAME_MAP = [
+    "WWWWWWWWWWWWWWWWWWWWWWWWWWW",
+    "W...A........W.........W..W",
+    "W...WWWWWW...W..V......W..W",
+    "W........W.............W..W",
+    "W..S.....W......X......W..W",  # Starbase 7 & Post-game sector
+    "W.........................Ω",  # Completely open highway straight to Ultimate Boss (Ω)
+    "W.........................W",
+    "W........W.............W..W",
+    "W..4.....W.............W..W",
+    "W........W......5......W..W",  # Post-game caches
+    "W.........................W",
+    "WWWWWWWWWWWWWWWWWWWWWWWWWWW",
+]
 
 
 # ============================================================================
-#                            COMBAT & INTERACTION SUITE
+#                       UI & BEAUTY HELPER FUNCTIONS
+# ============================================================================
+def draw_starfield(surface):
+    for star in STARS:
+        sx, sy, size = star
+        pygame.draw.circle(surface, (200, 220, 255), (sx, sy), size)
+
+
+def draw_bar(surface, x, y, w, h, current, max_val, color):
+    pygame.draw.rect(surface, DARK_GRAY, (x, y, w, h), border_radius=4)
+    fill_w = int(w * (max(0, current) / max(1, max_val)))
+    if fill_w > 0:
+        pygame.draw.rect(surface, color, (x, y, fill_w, h), border_radius=4)
+    pygame.draw.rect(surface, WHITE, (x, y, w, h), 1, border_radius=4)
+
+
+# ============================================================================
+#                       START & CUSTOMIZATION SCREEN
+# ============================================================================
+def start_screen():
+    p_name = "Commander Rex"
+    color_idx = 0
+    ship_idx = 0
+    selection_step = 0
+    input_active = True
+
+    while input_active:
+        clock.tick(FPS)
+        screen.fill(BLACK)
+        draw_starfield(screen)
+
+        box = pygame.Rect(120, 60, WIDTH - 240, HEIGHT - 120)
+        pygame.draw.rect(screen, PANEL_BG, box, border_radius=15)
+        pygame.draw.rect(screen, CYAN, box, 3, border_radius=15)
+
+        title = TITLE_FONT.render("🚀 STARBOUND ODYSSEY: COMMANDER FORGE 🚀", True, GOLD)
+
+        if selection_step == 0:
+            step_txt = BIG_FONT.render("Step 1: Enter Your Commander Name", True, CYAN)
+            val_txt = FONT.render(f"Name: {p_name} _ (Type & press ENTER)", True, WHITE)
+        elif selection_step == 1:
+            step_txt = BIG_FONT.render("Step 2: Choose Uniform Color [LEFT/RIGHT]", True, CYAN)
+            val_txt = FONT.render(f"Color: < {COLOR_NAMES[color_idx]} > (Press ENTER to confirm)", True,
+                                  COLOR_OPTIONS[COLOR_NAMES[color_idx]])
+        else:
+            c_name = SHIP_NAMES[ship_idx]
+            c_data = SHIP_CLASSES[c_name]
+            step_txt = BIG_FONT.render("Step 3: Select Starship Hull Class [LEFT/RIGHT]", True, CYAN)
+            val_txt = FONT.render(
+                f"Class: < {c_name} > ({c_data['desc']} | HP:{c_data['hp']} Energy:{c_data['energy']})", True, GOLD)
+
+        launch_hint = FONT.render("Press [ENTER] to advance / launch mission", True, GREEN)
+
+        screen.blit(title, (WIDTH // 2 - title.get_width() // 2, box.y + 40))
+        screen.blit(step_txt, (WIDTH // 2 - step_txt.get_width() // 2, box.y + 140))
+        screen.blit(val_txt, (WIDTH // 2 - val_txt.get_width() // 2, box.y + 220))
+        screen.blit(launch_hint, (WIDTH // 2 - launch_hint.get_width() // 2, box.y + 350))
+
+        pygame.display.flip()
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_RETURN:
+                    if selection_step < 2:
+                        selection_step += 1
+                    else:
+                        input_active = False
+                elif event.key == pygame.K_LEFT:
+                    if selection_step == 1:
+                        color_idx = (color_idx - 1) % len(COLOR_NAMES)
+                    elif selection_step == 2:
+                        ship_idx = (ship_idx - 1) % len(SHIP_NAMES)
+                elif event.key == pygame.K_RIGHT:
+                    if selection_step == 1:
+                        color_idx = (color_idx + 1) % len(COLOR_NAMES)
+                    elif selection_step == 2:
+                        ship_idx = (ship_idx + 1) % len(SHIP_NAMES)
+                elif event.key == pygame.K_BACKSPACE:
+                    if selection_step == 0:
+                        p_name = p_name[:-1]
+                else:
+                    if selection_step == 0 and len(p_name) < 15 and (event.unicode.isalnum() or event.unicode == " "):
+                        p_name += event.unicode
+
+    loading_screen("INITIALIZING EXPANDED GALAXY...")
+    return Player(
+        p_name.strip() if p_name.strip() else "Commander Rex",
+        COLOR_NAMES[color_idx],
+        SHIP_NAMES[ship_idx],
+    )
+
+
+def loading_screen(message="LOADING SECTOR..."):
+    progress = 0
+    while progress < 100:
+        clock.tick(FPS)
+        screen.fill(BLACK)
+        draw_starfield(screen)
+
+        load_box = pygame.Rect(WIDTH // 2 - 250, HEIGHT // 2 - 50, 500, 100)
+        pygame.draw.rect(screen, PANEL_BG, load_box, border_radius=10)
+        pygame.draw.rect(screen, BLUE, load_box, 2, border_radius=10)
+
+        load_txt = BIG_FONT.render(message, True, CYAN)
+        screen.blit(load_txt, (WIDTH // 2 - load_txt.get_width() // 2, load_box.y + 15))
+
+        draw_bar(screen, load_box.x + 30, load_box.y + 60, 440, 16, progress, 100, GREEN)
+
+        pygame.display.flip()
+        progress += 6
+
+
+# ============================================================================
+#                  COMPANION BATTLE CUTSCENE SYSTEM
+# ============================================================================
+def play_companion_cutscene(screen, companion_name, action_desc):
+    timer = 0
+    while timer < 65:
+        clock.tick(FPS)
+        screen.fill(SPACE_BLUE)
+        draw_starfield(screen)
+
+        banner = pygame.Rect(100, HEIGHT // 2 - 90, WIDTH - 200, 180)
+        pygame.draw.rect(screen, PANEL_BG, banner, border_radius=12)
+        pygame.draw.rect(
+            screen,
+            GREEN if companion_name == "Dr. Vex" else GOLD,
+            banner,
+            3,
+            border_radius=12,
+        )
+
+        c_title = TITLE_FONT.render(
+            f"✨ COMPANION ABILITY: {companion_name.upper()} ✨",
+            True,
+            GREEN if companion_name == "Dr. Vex" else GOLD,
+        )
+        c_desc = BIG_FONT.render(action_desc, True, WHITE)
+
+        screen.blit(c_title, (WIDTH // 2 - c_title.get_width() // 2, banner.y + 35))
+        screen.blit(c_desc, (WIDTH // 2 - c_desc.get_width() // 2, banner.y + 100))
+
+        pygame.display.flip()
+        timer += 1
+
+
+# ============================================================================
+#                       POKÉMON-STYLE COMBAT SUITE
 # ============================================================================
 def trigger_combat(screen, player, enemy_name, enemy_hp):
-  combat_active = True
-  msg = f"Hostile encounter with {enemy_name}!"
-  enemy_max_hp = enemy_hp
+    combat_active = True
+    msg = f"A wild {enemy_name} appeared!"
+    enemy_max_hp = enemy_hp
+    screen_flash = 0
 
-  while combat_active:
-    screen.fill(SPACE_BLUE)
+    while combat_active:
+        clock.tick(FPS)
+        screen.fill(SPACE_BLUE)
+        draw_starfield(screen)
 
-    title = BIG_FONT.render(f"⚔️ BATTLE: {enemy_name.upper()}", True, RED)
-    screen.blit(title, (WIDTH // 2 - title.get_width() // 2, 40))
+        e_box = pygame.Rect(WIDTH - 450, 40, 400, 110)
+        pygame.draw.rect(screen, PANEL_BG, e_box, border_radius=10)
+        pygame.draw.rect(screen, RED, e_box, 2, border_radius=10)
+        screen.blit(BIG_FONT.render(enemy_name, True, WHITE), (e_box.x + 20, e_box.y + 12))
+        screen.blit(FONT.render(f"HP: {max(0, enemy_hp)} / {enemy_max_hp}", True, WHITE), (e_box.x + 20, e_box.y + 45))
+        draw_bar(screen, e_box.x + 20, e_box.y + 75, 360, 14, enemy_hp, enemy_max_hp, RED)
 
-    p_info = FONT.render(
-        f"Commander HP: {player.hp}/{player.max_hp}  |  Energy:"
-        f" {player.energy}/{player.max_energy}",
-        True,
-        CYAN,
-    )
-    e_info = FONT.render(
-        f"{enemy_name} HP: {max(0, enemy_hp)}/{enemy_max_hp}", True, RED
-    )
-    screen.blit(p_info, (100, 130))
-    screen.blit(e_info, (520, 130))
+        p_box = pygame.Rect(50, HEIGHT - 330, 420, 150)
+        pygame.draw.rect(screen, PANEL_BG, p_box, border_radius=10)
+        pygame.draw.rect(screen, player.color, p_box, 2, border_radius=10)
+        screen.blit(BIG_FONT.render(f"Commander {player.name}", True, player.color), (p_box.x + 20, p_box.y + 12))
+        screen.blit(
+            FONT.render(f"HP: {max(0, player.hp)} / {player.max_hp}  |  Energy: {player.energy}/{player.max_energy}",
+                        True, WHITE), (p_box.x + 20, p_box.y + 45))
+        draw_bar(screen, p_box.x + 20, p_box.y + 75, 380, 12, player.hp, player.max_hp, GREEN)
+        draw_bar(screen, p_box.x + 20, p_box.y + 98, 380, 10, player.energy, player.max_energy, BLUE)
+        screen.blit(FONT.render(f"Weapon: {player.equipped_weapon}", True, GOLD), (p_box.x + 20, p_box.y + 120))
 
-    c1 = FONT.render("[1] Fire Weapon Attack", True, WHITE)
-    c2 = FONT.render(
-        "[2] Cast Shield Generator (-15 Energy, +40 HP)", True, GREEN
-    )
-    c3 = FONT.render(
-        f"[3] Use Nano-Medpac Item ({player.inventory['Nano-Medpac']} left)",
-        True,
-        GOLD,
-    )
-    c4 = FONT.render("[4] Tactical Rest (+25 Energy)", True, LIGHT_GRAY)
+        menu_box = pygame.Rect(WIDTH - 470, HEIGHT - 330, 420, 150)
+        pygame.draw.rect(screen, PANEL_BG, menu_box, border_radius=10)
+        pygame.draw.rect(screen, CYAN, menu_box, 2, border_radius=10)
 
-    screen.blit(c1, (100, 220))
-    screen.blit(c2, (100, 270))
-    screen.blit(c3, (100, 320))
-    screen.blit(c4, (100, 370))
+        screen.blit(FONT.render("FIGHT COMMANDS:", True, CYAN), (menu_box.x + 20, menu_box.y + 12))
+        screen.blit(FONT.render(f"[1] Attack ({player.equipped_weapon})", True, WHITE),
+                    (menu_box.x + 20, menu_box.y + 40))
+        screen.blit(FONT.render("[2] Shield Gen (-15 Energy, +45 HP)", True, GREEN), (menu_box.x + 20, menu_box.y + 68))
+        screen.blit(FONT.render(f"[3] Dr. Vex Heal ({'Ready' if 'Dr. Vex' in player.crew else 'Not Recruited'})", True,
+                                GREEN if "Dr. Vex" in player.crew else DARK_GRAY), (menu_box.x + 20, menu_box.y + 96))
+        screen.blit(
+            FONT.render(f"[4] Sprocket Overclock ({'Ready' if 'Sprocket' in player.crew else 'Not Recruited'})", True,
+                        GOLD if "Sprocket" in player.crew else DARK_GRAY), (menu_box.x + 20, menu_box.y + 122))
 
-    msg_box = pygame.Rect(80, 440, WIDTH - 160, 60)
-    pygame.draw.rect(screen, DARK_GRAY, msg_box, border_radius=6)
-    pygame.draw.rect(screen, CYAN, msg_box, 2, border_radius=6)
-    msg_surf = FONT.render(msg, True, WHITE)
-    screen.blit(msg_surf, (msg_box.x + 20, msg_box.y + 20))
+        msg_box = pygame.Rect(50, HEIGHT - 150, WIDTH - 100, 110)
+        pygame.draw.rect(screen, PANEL_BG, msg_box, border_radius=10)
+        pygame.draw.rect(screen, WHITE, msg_box, 2, border_radius=10)
+        screen.blit(BIG_FONT.render(msg, True, WHITE), (msg_box.x + 25, msg_box.y + 35))
 
-    pygame.display.flip()
+        if screen_flash > 0:
+            s = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+            s.fill((255, 0, 0, 60))
+            screen.blit(s, (0, 0))
+            screen_flash -= 1
 
-    for event in pygame.event.get():
-      if event.type == pygame.QUIT:
-        pygame.quit()
-        sys.exit()
-      elif event.type == pygame.KEYDOWN:
-        if event.key == pygame.K_1:
-          atk = player.weapons[player.equipped_weapon]["base_atk"]
-          dmg = random.randint(atk - 4, atk + 10)
-          enemy_hp -= dmg
-          msg = f"Fired {player.equipped_weapon} for {dmg} damage!"
-        elif event.key == pygame.K_2:
-          if player.energy >= 15:
-            player.energy -= 15
-            player.hp = min(player.max_hp, player.hp + 40)
-            msg = "Shield Generator activated! Restored 40 HP."
-          else:
-            msg = "Not enough energy!"
-            continue
-        elif event.key == pygame.K_3:
-          if player.inventory["Nano-Medpac"] > 0:
-            player.inventory["Nano-Medpac"] -= 1
-            player.hp = min(player.max_hp, player.hp + 60)
-            msg = "Used Nano-Medpac! Restored 60 HP."
-          else:
-            msg = "No Nano-Medpacs left!"
-            continue
-        elif event.key == pygame.K_4:
-          player.energy = min(player.max_energy, player.energy + 25)
-          msg = "Rerouted power. Restored 25 Energy."
+        pygame.display.flip()
 
-        # CHECK IF ENEMY / BOSS IS DEFEATED
-        if enemy_hp <= 0:
-          msg = f"🏆 Victory! {enemy_name} neutralized."
-          screen.fill(SPACE_BLUE)
-          screen.blit(title, (WIDTH // 2 - title.get_width() // 2, 40))
-          screen.blit(p_info, (100, 130))
-          e_info_zero = FONT.render(
-              f"{enemy_name} HP: 0/{enemy_max_hp}", True, RED
-          )
-          screen.blit(e_info_zero, (520, 130))
-          pygame.draw.rect(screen, DARK_GRAY, msg_box, border_radius=6)
-          pygame.draw.rect(screen, CYAN, msg_box, 2, border_radius=6)
-          screen.blit(
-              FONT.render(msg, True, GREEN), (msg_box.x + 20, msg_box.y + 20)
-          )
-          pygame.display.flip()
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_1:
+                    atk = player.weapons[player.equipped_weapon]["base_atk"]
+                    dmg = random.randint(atk - 4, atk + 12)
+                    enemy_hp -= dmg
+                    msg = f"Commander {player.name} used {player.equipped_weapon}! Dealt {dmg} damage."
+                elif event.key == pygame.K_2:
+                    if player.energy >= 15:
+                        player.energy -= 15
+                        player.hp = min(player.max_hp, player.hp + 45)
+                        msg = "Shield Generator online! Restored 45 HP."
+                    else:
+                        msg = "Energy too low to raise shields!"
+                        continue
+                elif event.key == pygame.K_3:
+                    if "Dr. Vex" in player.crew:
+                        play_companion_cutscene(screen, "Dr. Vex", "Deploying Nano-Nanites! Fully Restored Hull HP!")
+                        player.hp = player.max_hp
+                        msg = "Dr. Vex executed Emergency Medical Overhaul!"
+                    else:
+                        msg = "Dr. Vex is not on your crew!"
+                        continue
+                elif event.key == pygame.K_4:
+                    if "Sprocket" in player.crew:
+                        play_companion_cutscene(screen, "Sprocket", "Rerouting Auxiliary Plasma Cores!")
+                        atk = player.weapons[player.equipped_weapon]["base_atk"] * 2
+                        enemy_hp -= atk
+                        msg = f"Sprocket's Overclock Strike dealt a massive {atk} damage!"
+                    else:
+                        msg = "Sprocket is not on your crew!"
+                        continue
 
-          pygame.time.delay(1500)
-          player.credits += 75
-          player.level += 1
-          return True
+                if enemy_hp <= 0:
+                    msg = f"Victory! {enemy_name} was defeated!"
+                    pygame.display.flip()
+                    pygame.time.delay(1600)
+                    player.credits += 140
+                    player.level += 1
+                    return True
 
-        # Enemy Counter-Attack Turn
-        e_dmg = random.randint(12, 22)
-        player.hp -= e_dmg
-        if player.hp <= 0:
-          msg = "💀 Hull breached! You were defeated..."
-          pygame.display.flip()
-          pygame.time.delay(1800)
-          return False
-
-
-# ============================================================================
-#                               VICTORY SPECIAL ROOM SCREEN
-# ============================================================================
-def show_victory_screen(screen, player):
-  waiting = True
-  while waiting:
-    screen.fill(BLACK)
-
-    # Draw decorative starlight background
-    for i in range(50):
-      sx = (i * 137) % WIDTH
-      sy = (i * 91) % HEIGHT
-      pygame.draw.circle(screen, WHITE, (sx, sy), 2)
-
-    # Victory Box Frame
-    box = pygame.Rect(100, 80, WIDTH - 200, HEIGHT - 160)
-    pygame.draw.rect(screen, SPACE_BLUE, box, border_radius=12)
-    pygame.draw.rect(screen, GOLD, box, 4, border_radius=12)
-
-    title = VICTORY_FONT.render(
-        "🌟 MISSION ACCOMPLISHED 🌟", True, GOLD
-    )
-    sub = BIG_FONT.render("THE OMEGA DREADNOUGHT IS DESTROYED", True, CYAN)
-
-    p_stats = FONT.render(
-        f"Commander: {player.name if hasattr(player, 'name') else 'Hero'}  | "
-        f" Level Reached: {player.level}",
-        True,
-        WHITE,
-    )
-    credits_stats = FONT.render(
-        f"Final Credits: {player.credits} ¢  |  Crew Members:"
-        f" {player.crew if player.crew else 'Solo Explorer'}",
-        True,
-        WHITE,
-    )
-    exit_prompt = FONT.render(
-        "Press [ESC] or close window to exit game.", True, GREEN
-    )
-
-    screen.blit(
-        title, (WIDTH // 2 - title.get_width() // 2, box.y + 50)
-    )
-    screen.blit(
-        sub, (WIDTH // 2 - sub.get_width() // 2, box.y + 110)
-    )
-    screen.blit(
-        p_stats, (WIDTH // 2 - p_stats.get_width() // 2, box.y + 190)
-    )
-    screen.blit(
-        credits_stats,
-        (WIDTH // 2 - credits_stats.get_width() // 2, box.y + 230),
-    )
-    screen.blit(
-        exit_prompt, (WIDTH // 2 - exit_prompt.get_width() // 2, box.y + 310)
-    )
-
-    pygame.display.flip()
-
-    for event in pygame.event.get():
-      if event.type == pygame.QUIT:
-        pygame.quit()
-        sys.exit()
-      elif event.type == pygame.KEYDOWN:
-        if event.key == pygame.K_ESCAPE or event.key == pygame.K_RETURN:
-          pygame.quit()
-          sys.exit()
+                e_dmg = random.randint(18, 30)
+                player.hp -= e_dmg
+                screen_flash = 5
+                if player.hp <= 0:
+                    msg = "Commander hull breached... Mission Failed."
+                    pygame.display.flip()
+                    pygame.time.delay(2000)
+                    return False
 
 
 # ============================================================================
-#                               MARKET & HANGAR SCREEN
+#                               VICTORY SPECIAL SCREEN
+# ============================================================================
+def show_ultimate_victory_screen(screen, player):
+    waiting = True
+    while waiting:
+        clock.tick(FPS)
+        screen.fill(BLACK)
+        draw_starfield(screen)
+
+        box = pygame.Rect(120, 80, WIDTH - 240, HEIGHT - 160)
+        pygame.draw.rect(screen, PANEL_BG, box, border_radius=15)
+        pygame.draw.rect(screen, GOLD, box, 4, border_radius=15)
+
+        title = VICTORY_FONT.render("🌟 LEGENDARY SAVIOR OF THE VOID 🌟", True, GOLD)
+        sub = BIG_FONT.render("THE UNIVERSE HAS BEEN SECURED", True, CYAN)
+
+        p_stats = FONT.render(
+            f"Commander {player.name} (Max Level {player.level})  |  Final Credits: {player.credits} ¢", True, WHITE)
+        crew_stats = FONT.render(f"Elite Crew: {player.crew if player.crew else 'Solo Legend'}", True, WHITE)
+        exit_msg = FONT.render("Press [ESC] or [ENTER] to exit the simulation.", True, GREEN)
+
+        screen.blit(title, (WIDTH // 2 - title.get_width() // 2, box.y + 50))
+        screen.blit(sub, (WIDTH // 2 - sub.get_width() // 2, box.y + 120))
+        screen.blit(p_stats, (WIDTH // 2 - p_stats.get_width() // 2, box.y + 210))
+        screen.blit(crew_stats, (WIDTH // 2 - crew_stats.get_width() // 2, box.y + 250))
+        screen.blit(exit_msg, (WIDTH // 2 - exit_msg.get_width() // 2, box.y + 340))
+
+        pygame.display.flip()
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            elif event.type == pygame.KEYDOWN:
+                if event.key in (pygame.K_ESCAPE, pygame.K_RETURN):
+                    pygame.quit()
+                    sys.exit()
+
+
+# ============================================================================
+#                               MARKET SHOP SCREEN
 # ============================================================================
 def open_starbase_market(screen, player):
-  in_market = True
-  msg = "Welcome to Starbase 7. Press keys to trade."
+    in_market = True
+    msg = "Welcome to Starbase 7 Trading Post."
 
-  while in_market:
-    screen.fill(SPACE_BLUE)
+    while in_market:
+        clock.tick(FPS)
+        screen.fill(SPACE_BLUE)
+        draw_starfield(screen)
 
-    title = BIG_FONT.render(
-        "🛸 STARBASE 7 - SMUGGLER MARKET & QUARTERS", True, GOLD
-    )
-    screen.blit(title, (WIDTH // 2 - title.get_width() // 2, 40))
+        box = pygame.Rect(100, 40, WIDTH - 200, HEIGHT - 80)
+        pygame.draw.rect(screen, PANEL_BG, box, border_radius=12)
+        pygame.draw.rect(screen, BLUE, box, 3, border_radius=12)
 
-    c_info = FONT.render(
-        f"Your Credits: {player.credits} ¢  |  Crew: {player.crew}", True, CYAN
-    )
-    screen.blit(c_info, (100, 110))
+        title = TITLE_FONT.render("🛸 STARBASE 7 - SMUGGLER TRADING BAY", True, GOLD)
+        screen.blit(title, (WIDTH // 2 - title.get_width() // 2, box.y + 20))
 
-    opt1 = FONT.render(
-        "[1] Recruit Dr. Vex (Medic) - 70 Credits (Grants +30 Max HP)",
-        True,
-        WHITE,
-    )
-    opt2 = FONT.render(
-        "[2] Buy Nano-Medpac (+60 HP) - 25 Credits", True, WHITE
-    )
-    opt3 = FONT.render(
-        "[3] Buy Quantum Rifle (ATK: 50) - 100 Credits", True, WHITE
-    )
-    opt4 = FONT.render("[4] Exit Starbase Market", True, RED)
+        c_info = FONT.render(
+            f"Available Credits: {player.credits} ¢  |  Crew: {player.crew}  |  Equipped: {player.equipped_weapon}",
+            True, CYAN)
+        screen.blit(c_info, (box.x + 40, box.y + 70))
 
-    screen.blit(opt1, (100, 180))
-    screen.blit(opt2, (100, 230))
-    screen.blit(opt3, (100, 280))
-    screen.blit(opt4, (100, 350))
+        opt1 = FONT.render("[1] Recruit Dr. Vex (Medic Follower) - 70 Credits (+30 Max HP)", True, WHITE)
+        opt2 = FONT.render("[2] Recruit Sprocket (Engineer Follower) - 85 Credits (+12 All ATK)", True, WHITE)
+        opt3 = FONT.render("[3] Buy Nano-Medpac (+65 HP) - 25 Credits", True, WHITE)
+        opt4 = FONT.render("[4] Buy Plasma Blade (ATK: 45) - 90 Credits", True, WHITE)
+        opt5 = FONT.render("[5] Buy Quantum Disruptor Rifle (ATK: 65) - 130 Credits", True, WHITE)
+        opt6 = FONT.render("[6] Buy Void Singularity Cannon (ATK: 95) - 220 Credits", True,
+                           GOLD if player.in_post_game else DARK_GRAY)
+        opt7 = FONT.render("[7] Return to Starship Bridge", True, RED)
 
-    msg_surf = FONT.render(msg, True, GREEN)
-    screen.blit(msg_surf, (100, 440))
+        screen.blit(opt1, (box.x + 40, box.y + 125))
+        screen.blit(opt2, (box.x + 40, box.y + 165))
+        screen.blit(opt3, (box.x + 40, box.y + 205))
+        screen.blit(opt4, (box.x + 40, box.y + 245))
+        screen.blit(opt5, (box.x + 40, box.y + 285))
+        screen.blit(opt6, (box.x + 40, box.y + 325))
+        screen.blit(opt7, (box.x + 40, box.y + 390))
 
-    pygame.display.flip()
+        msg_box = pygame.Rect(box.x + 40, box.y + 440, box.width - 80, 50)
+        pygame.draw.rect(screen, DARK_GRAY, msg_box, border_radius=6)
+        screen.blit(FONT.render(msg, True, GREEN), (msg_box.x + 15, msg_box.y + 15))
 
-    for event in pygame.event.get():
-      if event.type == pygame.QUIT:
-        pygame.quit()
-        sys.exit()
-      elif event.type == pygame.KEYDOWN:
-        if event.key == pygame.K_1:
-          if "Dr. Vex" in player.crew:
-            msg = "Dr. Vex is already on your crew!"
-          elif player.credits >= 70:
-            player.credits -= 70
-            player.crew.append("Dr. Vex")
-            player.max_hp += 30
-            player.hp = player.max_hp
-            msg = "✨ Dr. Vex joined your crew! Max HP increased."
-          else:
-            msg = "Not enough credits!"
-        elif event.key == pygame.K_2:
-          if player.credits >= 25:
-            player.credits -= 25
-            player.inventory["Nano-Medpac"] += 1
-            msg = "Purchased 1 Nano-Medpac."
-          else:
-            msg = "Not enough credits!"
-        elif event.key == pygame.K_3:
-          if "Quantum Rifle" in player.weapons:
-            msg = "You already own this weapon!"
-          elif player.credits >= 100:
-            player.credits -= 100
-            player.weapons["Quantum Rifle"] = {
-                "base_atk": 50,
-                "desc": "Advanced dimensional blaster.",
-            }
-            player.equipped_weapon = "Quantum Rifle"
-            msg = "⚔️ Purchased and equipped Quantum Rifle!"
-          else:
-            msg = "Not enough credits!"
-        elif event.key == pygame.K_4 or event.key == pygame.K_ESCAPE:
-          in_market = False
+        pygame.display.flip()
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_1:
+                    if "Dr. Vex" in player.crew:
+                        msg = "Dr. Vex is already following your crew!"
+                    elif player.credits >= 70:
+                        player.credits -= 70
+                        player.crew.append("Dr. Vex")
+                        player.max_hp += 30
+                        player.hp = player.max_hp
+                        msg = "✨ Dr. Vex recruited as active follower & combat medic!"
+                    else:
+                        msg = "❌ Insufficient credits!"
+                elif event.key == pygame.K_2:
+                    if "Sprocket" in player.crew:
+                        msg = "Sprocket is already following your crew!"
+                    elif player.credits >= 85:
+                        player.credits -= 85
+                        player.crew.append("Sprocket")
+                        for w in player.weapons.values():
+                            w["base_atk"] += 12
+                        msg = "✨ Sprocket recruited as active follower & combat engineer!"
+                    else:
+                        msg = "❌ Insufficient credits!"
+                elif event.key == pygame.K_3:
+                    if player.credits >= 25:
+                        player.credits -= 25
+                        player.inventory["Nano-Medpac"] += 1
+                        msg = "📦 Purchased 1 Nano-Medpac."
+                    else:
+                        msg = "❌ Insufficient credits!"
+                elif event.key == pygame.K_4:
+                    if "Plasma Blade" in player.weapons:
+                        player.equipped_weapon = "Plasma Blade"
+                        msg = "⚔️ Equipped Plasma Blade!"
+                    elif player.credits >= 90:
+                        player.credits -= 90
+                        bonus = 12 if "Sprocket" in player.crew else 0
+                        player.weapons["Plasma Blade"] = {"base_atk": 45 + bonus, "desc": "Superheated melee blade."}
+                        player.equipped_weapon = "Plasma Blade"
+                        msg = "⚔️ Plasma Blade purchased & equipped!"
+                    else:
+                        msg = "❌ Insufficient credits!"
+                elif event.key == pygame.K_5:
+                    if "Quantum Rifle" in player.weapons:
+                        player.equipped_weapon = "Quantum Rifle"
+                        msg = "⚔️ Equipped Quantum Rifle!"
+                    elif player.credits >= 130:
+                        player.credits -= 130
+                        bonus = 12 if "Sprocket" in player.crew else 0
+                        player.weapons["Quantum Rifle"] = {"base_atk": 65 + bonus, "desc": "Dimensional rifle."}
+                        player.equipped_weapon = "Quantum Rifle"
+                        msg = "⚔️ Quantum Disruptor Rifle purchased & equipped!"
+                    else:
+                        msg = "❌ Insufficient credits!"
+                elif event.key == pygame.K_6:
+                    if not player.in_post_game:
+                        msg = "🔒 Locked! Unlock the Void Dimension post-game first."
+                    elif "Void Cannon" in player.weapons:
+                        player.equipped_weapon = "Void Cannon"
+                        msg = "⚔️ Equipped Void Singularity Cannon!"
+                    elif player.credits >= 220:
+                        player.credits -= 220
+                        bonus = 12 if "Sprocket" in player.crew else 0
+                        player.weapons["Void Cannon"] = {"base_atk": 95 + bonus,
+                                                         "desc": "Warp-core singularity weapon."}
+                        player.equipped_weapon = "Void Cannon"
+                        msg = "⚔️ Legendary Void Singularity Cannon acquired!"
+                    else:
+                        msg = "❌ Insufficient credits!"
+                elif event.key in (pygame.K_7, pygame.K_ESCAPE):
+                    in_market = False
 
 
 # ============================================================================
 #                               MAIN GAME LOOP
 # ============================================================================
 def main():
-  player = Player(2, 4)
-  running = True
-  status_msg = "Use [W, A, S, D] to pilot your starship across sectors."
+    player = start_screen()
+    running = True
+    status_msg = f"Welcome, Commander {player.name}! Use [W, A, S, D] to navigate the expanded galaxy."
 
-  while running:
-    clock.tick(FPS)
+    while running:
+        clock.tick(FPS)
 
-    for event in pygame.event.get():
-      if event.type == pygame.QUIT:
-        running = False
-      elif event.type == pygame.KEYDOWN:
-        if event.key == pygame.K_w:
-          player.move(0, -1, GALAXY_MAP)
-        elif event.key == pygame.K_s:
-          player.move(0, 1, GALAXY_MAP)
-        elif event.key == pygame.K_a:
-          player.move(-1, 0, GALAXY_MAP)
-        elif event.key == pygame.K_d:
-          player.move(1, 0, GALAXY_MAP)
+        current_map = POST_GAME_MAP if player.in_post_game else MAIN_MAP
 
-    # If the game is already won, trigger the special victory room screen
-    if player.game_won:
-      show_victory_screen(screen, player)
-      break
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_w:
+                    player.move(0, -1, current_map)
+                elif event.key == pygame.K_s:
+                    player.move(0, 1, current_map)
+                elif event.key == pygame.K_a:
+                    player.move(-1, 0, current_map)
+                elif event.key == pygame.K_d:
+                    player.move(1, 0, current_map)
 
-    current_tile = GALAXY_MAP[player.y][player.x]
+        if player.ultimate_boss_defeated:
+            show_ultimate_victory_screen(screen, player)
+            break
 
-    if current_tile == "S":
-      status_msg = "Starbase 7 detected! Press [E] to dock and trade."
-      keys = pygame.key.get_pressed()
-      if keys[pygame.K_e]:
-        open_starbase_market(screen, player)
+        current_tile = current_map[player.y][player.x]
 
-    elif current_tile == "1":
-      if "CODE-7291" not in player.vault_codes:
-        won = trigger_combat(screen, player, "Zorblaxian Marauder", 90)
-        if not won:
-          break
-        player.vault_codes.append("CODE-7291")
-        status_msg = (
-            "Sector 1 Cleared! Acquired Vault Access Code: [CODE-7291]"
-        )
+        if current_tile == "S":
+            status_msg = "Starbase 7 docked! Press [E] to open Smuggler Market."
+            keys = pygame.key.get_pressed()
+            if keys[pygame.K_e]:
+                open_starbase_market(screen, player)
 
-    elif current_tile == "2":
-      if "CODE-4085" not in player.vault_codes:
-        won = trigger_combat(screen, player, "Cyber-Derelict Drone", 125)
-        if not won:
-          break
-        player.vault_codes.append("CODE-4085")
-        status_msg = (
-            "Sector 2 Cleared! Acquired Vault Access Code: [CODE-4085]"
-        )
+        elif current_tile in ("1", "A"):
+            code_name = "CODE-7291" if not player.in_post_game else "VOID-KEY-1"
+            enemy_title = "Zorblaxian Marauder" if not player.in_post_game else "Void Stalker Phantom"
+            hp_pool = 110 if not player.in_post_game else 180
 
-    elif current_tile == "3":
-      if "CODE-1934" not in player.vault_codes:
-        won = trigger_combat(screen, player, "Quantum Sanctum Guardian", 145)
-        if not won:
-          break
-        player.vault_codes.append("CODE-1934")
-        status_msg = (
-            "Sector 3 Cleared! Acquired Vault Access Code: [CODE-1934]"
-        )
+            if code_name not in player.vault_codes:
+                won = trigger_combat(screen, player, enemy_title, hp_pool)
+                if not won:
+                    break
+                player.vault_codes.append(code_name)
+                status_msg = f"Sector Cleared! Acquired {code_name}"
 
-    elif current_tile == "B":
-      if len(player.vault_codes) >= 3:
-        won = trigger_combat(screen, player, "DREADNOUGHT OMEGA AI", 280)
-        if won:
-          player.game_won = True  # Set victory flag so it switches to the win room
-        else:
-          break
-      else:
-        status_msg = (
-            f"🔒 Vault Airlock Locked! Codes found: {len(player.vault_codes)}/3."
-            " Explore Sectors 1, 2, and 3 first!"
-        )
+        elif current_tile in ("2", "V"):
+            code_name = "CODE-4085" if not player.in_post_game else "VOID-KEY-2"
+            enemy_title = "Cyber-Derelict Drone" if not player.in_post_game else "Anomaly Behemoth"
+            hp_pool = 140 if not player.in_post_game else 220
 
-    screen.fill(SPACE_BLUE)
+            if code_name not in player.vault_codes:
+                won = trigger_combat(screen, player, enemy_title, hp_pool)
+                if not won:
+                    break
+                player.vault_codes.append(code_name)
+                status_msg = f"Sector Cleared! Acquired {code_name}"
 
-    for row in range(len(GALAXY_MAP)):
-      for col in range(COLS):
-        tile = GALAXY_MAP[row][col]
-        rect = pygame.Rect(
-            col * GRID_SIZE, row * GRID_SIZE, GRID_SIZE, GRID_SIZE
-        )
+        elif current_tile in ("3", "X"):
+            code_name = "CODE-1934" if not player.in_post_game else "VOID-KEY-3"
+            enemy_title = "Quantum Sanctum Guardian" if not player.in_post_game else "Nebula Archon"
+            hp_pool = 160 if not player.in_post_game else 260
 
-        if tile == "W":
-          pygame.draw.rect(screen, DARK_GRAY, rect)
-          pygame.draw.rect(screen, (60, 60, 90), rect, 1)
-        elif tile == "S":
-          pygame.draw.rect(screen, BLUE, rect, border_radius=6)
-        elif tile == "1":
-          pygame.draw.rect(screen, GREEN, rect, border_radius=6)
-        elif tile == "2":
-          pygame.draw.rect(screen, PURPLE, rect, border_radius=6)
-        elif tile == "3":
-          pygame.draw.rect(screen, GOLD, rect, border_radius=6)
-        elif tile == "B":
-          pygame.draw.rect(screen, RED, rect, border_radius=6)
-        else:
-          pygame.draw.rect(screen, (15, 20, 35), rect)
-          pygame.draw.rect(screen, (25, 30, 50), rect, 1)
+            if code_name not in player.vault_codes:
+                won = trigger_combat(screen, player, enemy_title, hp_pool)
+                if not won:
+                    break
+                player.vault_codes.append(code_name)
+                status_msg = f"Sector Cleared! Acquired {code_name}"
 
-    player.draw(screen)
+        elif current_tile in ("4", "5"):
+            bonus_type = "Credit Cache" if current_tile == "4" else "Energy Core Cache"
+            if current_tile not in player.vault_codes:
+                player.credits += 75
+                player.energy = min(player.max_energy, player.energy + 40)
+                player.vault_codes.append(current_tile)
+                status_msg = f"📦 Discovered {bonus_type}! +75 Credits & +40 Energy."
 
-    hud_rect = pygame.Rect(0, HEIGHT - 150, WIDTH, 150)
-    pygame.draw.rect(screen, (12, 16, 30), hud_rect)
-    pygame.draw.rect(screen, CYAN, hud_rect, 2)
+        elif current_tile == "B":
+            if len(player.vault_codes) >= 5 and not player.in_post_game:
+                won = trigger_combat(screen, player, "DREADNOUGHT OMEGA AI", 350)
+                if won:
+                    loading_screen("ACTIVATING OMEGA VOID PORTAL...")
+                    player.in_post_game = True
+                    player.vault_codes.clear()
+                    player.x, player.y = 2, 5
+                    player.position_history = [(player.x, player.y)]
+                    status_msg = "🌟 OMEGA DEFEATED! Welcome to the Omega Void Post-Game Dimension!"
+                else:
+                    break
+            elif not player.in_post_game:
+                status_msg = f"🔒 Vault Airlock Locked! Explore all sectors & caches first ({len(player.vault_codes)}/5 discovered)."
 
-    stats_text = FONT.render(
-        f"❤️ Hull HP: {player.hp}/{player.max_hp}  |  ⚡ Energy:"
-        f" {player.energy}/{player.max_energy}  |  💳 Credits:"
-        f" {player.credits}¢",
-        True,
-        WHITE,
-    )
-    gear_text = FONT.render(
-        f"🔫 Weapon: {player.equipped_weapon}  |  👥 Crew:"
-        f" {player.crew if player.crew else 'None'}  |  🔑 Vault Codes:"
-        f" {len(player.vault_codes)}/3",
-        True,
-        GOLD,
-    )
-    msg_text = FONT.render(f"STATUS: {status_msg}", True, CYAN)
+        elif current_tile == "Ω":
+            if len(player.vault_codes) >= 4:
+                won = trigger_combat(screen, player, "EMPYREAN VOID OVERLORD", 480)
+                if won:
+                    player.ultimate_boss_defeated = True
+                else:
+                    break
+            else:
+                status_msg = f"🔒 Void Singularity Sealed! Explore expanded void sectors first ({len(player.vault_codes)}/4)."
 
-    screen.blit(stats_text, (20, HEIGHT - 130))
-    screen.blit(gear_text, (20, HEIGHT - 95))
-    screen.blit(msg_text, (20, HEIGHT - 55))
+        # Render Map & Visuals
+        screen.fill(SPACE_BLUE)
+        draw_starfield(screen)
 
-    pygame.display.flip()
+        for row in range(len(current_map)):
+            for col in range(len(current_map[0])):
+                tile = current_map[row][col]
+                rect = pygame.Rect(col * GRID_SIZE, row * GRID_SIZE, GRID_SIZE, GRID_SIZE)
 
-  pygame.quit()
-  sys.exit()
+                if tile == "W":
+                    pygame.draw.rect(screen, DARK_GRAY, rect)
+                    pygame.draw.rect(screen, (50, 60, 90), rect, 1)
+                elif tile == "S":
+                    pygame.draw.rect(screen, BLUE, rect, border_radius=6)
+                elif tile in ("1", "A"):
+                    pygame.draw.rect(screen, GREEN, rect, border_radius=6)
+                elif tile in ("2", "V"):
+                    pygame.draw.rect(screen, PURPLE, rect, border_radius=6)
+                elif tile in ("3", "X"):
+                    pygame.draw.rect(screen, GOLD, rect, border_radius=6)
+                elif tile in ("4", "5"):
+                    pygame.draw.rect(screen, ORANGE, rect, border_radius=6)
+                elif tile in ("B", "Ω"):
+                    pygame.draw.rect(screen, RED if tile == "B" else VOID_PURPLE, rect, border_radius=6)
+                else:
+                    pygame.draw.rect(screen, (12, 16, 30), rect)
+                    pygame.draw.rect(screen, (20, 26, 45), rect, 1)
+
+        player.draw(screen, player.crew)
+
+        # Bottom HUD Panel
+        hud_rect = pygame.Rect(0, HEIGHT - 130, WIDTH, 130)
+        pygame.draw.rect(screen, PANEL_BG, hud_rect)
+        pygame.draw.rect(screen, CYAN, hud_rect, 2)
+
+        dimension_label = "DIMENSION: OMEGA VOID (POST-GAME)" if player.in_post_game else "DIMENSION: PRIME GALAXY"
+        stats_text = FONT.render(
+            f"❤️ Hull: {player.hp}/{player.max_hp}  |  ⚡ Energy: {player.energy}/{player.max_energy}  |  💳 Credits: {player.credits}¢",
+            True, WHITE)
+        gear_text = FONT.render(
+            f"🔫 Weapon: {player.equipped_weapon}  |  👥 Crew: {player.crew if player.crew else 'None'}  |  🔑 Exploration Progress: {len(player.vault_codes)} items",
+            True, GOLD)
+        msg_text = FONT.render(f"[{dimension_label}] STATUS: {status_msg}", True, CYAN)
+
+        screen.blit(stats_text, (25, HEIGHT - 110))
+        screen.blit(gear_text, (25, HEIGHT - 75))
+        screen.blit(msg_text, (25, HEIGHT - 40))
+
+        pygame.display.flip()
+
+    pygame.quit()
+    sys.exit()
 
 
 if __name__ == "__main__":
-  main()
+    main()
